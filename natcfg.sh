@@ -12,7 +12,7 @@ echo -e "${red}注意1${black}: 到域名的转发规则在添加后需要等待
 echo -e "${red}注意2${black}: 到IP的转发规则在重启后会失效，这是iptables的特性"
 echo
 setupService(){
-    wget -qO /usr/local/bin/dnat.sh https://raw.githubusercontent.com/arloor/iptablesUtils/master/dnat.sh||{
+    wget -qO /usr/local/bin/dnat.sh https://raw.githubusercontent.com/copyde/iptablesUtils/master/dnat.sh||{
         echo "脚本不存在，请通过github提交issue通知作者"
         exit 1
     }
@@ -184,6 +184,7 @@ rmSnat(){
 
 
 
+setupService
 echo  -e "${red}你要做什么呢（请输入数字）？Ctrl+C 退出本脚本${black}"
 select todo in 增加到域名的转发 删除到域名的转发 增加到IP的转发 删除到IP的转发 列出所有到域名的转发 查看iptables转发规则
 do

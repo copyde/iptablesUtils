@@ -6,6 +6,7 @@
 base=/etc/dnat
 mkdir $base 2>/dev/null
 conf=$base/conf
+conf_old=$base/conf_old
 firstAfterBoot=1
 
 
@@ -115,11 +116,33 @@ dnatIfNeed(){
 
         if [ "$firstAfterBoot" = "1" ];then
             echo 第一次运行，强制刷新nat
+            cp $conf $conf_old
             needNat=1
         fi
 
         echo $remote >$base/${1}IP
         [ "$needNat" = "1" ]&& dnat $1 $remote $3
+}
+
+rmIptablesNat(){
+    #删除旧的中转规则
+        local arr1=(`iptables -L PREROUTING -n -t nat --line-number |grep DNAT|grep "dpt:$1 "|sort -r|awk '{print $1,$3,$9}'|tr " " ":"|tr "\n" " "`)
+        for cell in ${arr1[@]}  # cell= 1:tcp:to:8.8.8.8:543
+        do
+            local arr2=(`echo $cell|tr ":" " "`)  #arr2=(1 tcp to 8.8.8.8 543)
+            local index=${arr2[0]}
+            local proto=${arr2[1]}
+            local targetIP=${arr2[3]}
+            local targetPort=${arr2[4]}
+            # echo 清除本机$localport端口到$targetIP:$targetPort的${proto}的PREROUTING转发规则[$index]
+            iptables -t nat  -D PREROUTING $index
+            # echo ==清除对应的POSTROUTING规则
+            local toRmIndexs=(`iptables -L POSTROUTING -n -t nat --line-number|grep SNAT|grep $targetIP|grep dpt:$targetPort|grep $proto|awk  '{print $1}'|sort -r|tr "\n" " "`)
+            for cell1 in ${toRmIndexs[@]}
+            do
+                iptables -t nat  -D POSTROUTING $cell1
+            done
+        done
 }
 
 while true ;
@@ -131,6 +154,7 @@ if [ "${localIP}" = "" ]; then
 fi
 echo  "3.本机网卡IP——$localIP"
 arr1=(`cat $conf`)
+arr1_old=(`cat $conf_old`)
 for cell in ${arr1[@]}  
 do
     arr2=(`echo $cell|tr ":" " "|tr ">" " "`)  #arr2=16 REJECT 0.0.0.0/0
@@ -144,6 +168,23 @@ echo "###########################################################"
 iptables -L PREROUTING -n -t nat --line-number
 iptables -L POSTROUTING -n -t nat --line-number
 echo "###########################################################"
+if [[ ! -z `diff $conf $conf_old` ]]; then
+    for cell_old in ${arr1_old[@]}
+    do
+        arr2_old=(`echo $cell_old|tr ":" " "|tr ">" " "`)  #arr2=16 REJECT 0.0.0.0/0
+        [ "${arr2_old[2]}" != "" -a "${arr2_old[3]}" = "" ]&& testVars ${arr2_old[0]}  ${arr2_old[1]} ${arr2_old[2]}&&{
+            for cell in ${arr1[@]}  
+            do
+                arr2=(`echo $cell|tr ":" " "|tr ">" " "`)  #arr2=16 REJECT 0.0.0.0/0
+                [ "${arr2[2]}" != "" -a "${arr2[3]}" = "" ]&& testVars ${arr2[0]}  ${arr2[1]} ${arr2[2]}&&{
+                    [[ ${arr2[0]} = ${arr2_old[0]} ]] && break
+                }
+                rmIptablesNat ${arr2_old[0]}
+            done
+        }
+    done
+fi
+cp $conf $conf_old
 firstAfterBoot=0
 sleep 60
 done
